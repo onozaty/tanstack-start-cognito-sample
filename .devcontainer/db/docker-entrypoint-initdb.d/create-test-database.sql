@@ -1,0 +1,2 @@
+CREATE DATABASE sample_test;
+GRANT ALL PRIVILEGES ON DATABASE sample_test TO db_user;

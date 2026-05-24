@@ -1,0 +1,21 @@
+{
+  "projectName": "tanstack-start-cognito-sample",
+  "mode": "file-router",
+  "typescript": true,
+  "tailwind": true,
+  "packageManager": "pnpm",
+  "git": false,
+  "install": true,
+  "intent": true,
+  "addOnOptions": {},
+  "includeExamples": false,
+  "envVarValues": {},
+  "routerOnly": false,
+  "version": 1,
+  "addOns": true,
+  "framework": "react",
+  "chosenAddOns": [
+    "biome",
+    "shadcn"
+  ]
+}

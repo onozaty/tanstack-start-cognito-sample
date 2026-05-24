@@ -1,0 +1,23 @@
+{
+  "name": "Node.js & PostgreSQL",
+  "dockerComposeFile": "compose.yaml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "remoteUser": "node",
+  "forwardPorts": [3000, 9229],
+  "portsAttributes": {
+    "3000": { "label": "TanStack Start (app)" },
+    "9229": { "label": "Cognito Local (OIDC IdP)" }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "biomejs.biome",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  }
+}

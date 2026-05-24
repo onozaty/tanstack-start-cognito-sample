@@ -1,0 +1,72 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../..:/workspaces:cached
+      - app-pnpm-store:/workspaces/app/.pnpm-store
+      - claude-config:/home/node/.claude
+    command: sleep infinity
+    network_mode: service:db
+    environment:
+      TZ: Asia/Tokyo
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./db/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    environment:
+      POSTGRES_PASSWORD: db_password
+      POSTGRES_USER: db_user
+      POSTGRES_DB: sample
+      TZ: Asia/Tokyo
+
+  pgadmin4:
+    image: dpage/pgadmin4:latest
+    ports:
+      - 8080:80
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json
+    environment:
+      PGADMIN_DEFAULT_EMAIL: user@example.com
+      PGADMIN_DEFAULT_PASSWORD: password
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    depends_on:
+      - db
+
+  cognito:
+    image: jagregory/cognito-local:latest
+    # app・db と同じネットワーク名前空間に入れることで、ブラウザ・サーバの双方から
+    # 同一 URL (localhost:9229) で到達できる。OIDC の issuer 検証を 1 つの URL に揃えるため。
+    network_mode: service:db
+    volumes:
+      # シードは read-only で配り、cognito-local が書き込む実体は名前付きボリュームに置く。
+      # こうしないと起動時の書き込み (RefreshTokens 追記など) でリポジトリ管理下の JSON が汚れる。
+      - ./cognito/.cognito:/seed:ro
+      - cognito-data:/app/.cognito
+    # 初回 (ボリュームが空) のときだけシードをコピーしてから起動する。
+    # 完了マーカー (.seeded) はコピー成功後に作るため、途中で中断しても次回やり直せる。
+    # 再シードしたい場合は `docker compose ... down -v` でボリュームごと作り直す。
+    entrypoint:
+      - sh
+      - -c
+      - |
+        if [ ! -f /app/.cognito/.seeded ]; then
+          cp -r /seed/. /app/.cognito/
+          touch /app/.cognito/.seeded
+        fi
+        exec node /app/start.js
+    depends_on:
+      - db
+
+volumes:
+  app-pnpm-store:
+  postgres-data:
+  pgadmin-data:
+  claude-config:
+  cognito-data:
