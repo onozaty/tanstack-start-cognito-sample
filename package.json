@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "vite dev --port 3000 --host",
+    "dev:aws": "vite dev --port 3000 --host --mode aws",
     "build": "vite build",
     "start": "node --env-file-if-exists=.env .output/server/index.mjs",
     "test": "vitest run",

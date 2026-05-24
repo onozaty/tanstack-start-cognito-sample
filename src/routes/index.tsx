@@ -10,6 +10,26 @@ const getSessionFn = createServerFn({ method: "GET" }).handler(async () => {
   return await auth.api.getSession({ headers: request.headers });
 });
 
+// IdP (Cognito) 側のセッションも破棄するための logout URL を組み立てる。
+// Better Auth の signOut はアプリのセッション cookie を消すだけで Cognito の
+// Hosted UI セッションは残るため、ここで /logout へリダイレクトして破棄する。
+// cognito-local には /logout が無いので、env が揃っているときだけ URL を返す
+// (揃っていなければ null = ローカルログアウトのみ)。
+const getIdpLogoutUrlFn = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const authBase = process.env.OIDC_AUTH_BASE;
+    const clientId = process.env.OIDC_CLIENT_ID;
+    const logoutUri = process.env.OIDC_LOGOUT_URI;
+    if (!authBase || !clientId || !logoutUri) {
+      return null;
+    }
+    const url = new URL(`${authBase}/logout`);
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("logout_uri", logoutUri);
+    return url.toString();
+  },
+);
+
 export const Route = createFileRoute("/")({
   component: Home,
   loader: () => getSessionFn(),
@@ -31,12 +51,20 @@ function Home() {
 
   const handleSignOut = async () => {
     try {
+      // 先にアプリ側のセッション cookie を破棄する。
       await authClient.signOut();
+      // IdP 側のセッションも破棄する。logout URL があれば Cognito の /logout へ
+      // 遷移し、Hosted UI セッションを破棄して logout_uri に戻ってくる。
+      const idpLogoutUrl = await getIdpLogoutUrlFn();
+      if (idpLogoutUrl) {
+        window.location.href = idpLogoutUrl;
+        return;
+      }
     } catch (error) {
       console.error("sign-out failed", error);
-    } finally {
-      await router.invalidate();
     }
+    // logout URL が無い (cognito-local 等) 場合はローカルログアウトのみ。
+    await router.invalidate();
   };
 
   return (

@@ -13,3 +13,6 @@ todos.json
 
 # Claude Code
 .claude/settings.local.json
+
+# 本物の Cognito の client secret を含むため絶対にコミットしない
+.env.aws

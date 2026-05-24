@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  TanStack Start + Better Auth サンプル用の検証用 Amazon Cognito。
+  User Pool / Hosted UI ドメイン / App Client を作成する。
+  delete-stack で全リソースがまとめて削除される。
+
+Parameters:
+  PoolName:
+    Type: String
+    Default: tanstack-start-sample
+    Description: User Pool 名 / App Client 名のプレフィックス
+  DomainPrefix:
+    Type: String
+    Description: Hosted UI ドメインのプレフィックス (グローバルで一意である必要がある)
+  CallbackUrl:
+    Type: String
+    Default: http://localhost:3000/api/auth/oauth2/callback/cognito
+    Description: Better Auth の OAuth コールバック URL
+  LogoutUrl:
+    Type: String
+    Default: http://localhost:3000/
+    Description: サインアウト後のリダイレクト先
+
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Ref PoolName
+      # email でログインする。email は自動検証。
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref DomainPrefix
+      UserPoolId: !Ref UserPool
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${PoolName}-client"
+      UserPoolId: !Ref UserPool
+      # Better Auth は confidential client (secret あり) として扱う。
+      GenerateSecret: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      SupportedIdentityProviders:
+        - COGNITO
+      CallbackURLs:
+        - !Ref CallbackUrl
+      LogoutURLs:
+        - !Ref LogoutUrl
+
+Outputs:
+  UserPoolId:
+    Value: !Ref UserPool
+  ClientId:
+    Value: !Ref UserPoolClient
+  # CloudFormation は client secret を Output に出せない (GetAtt 非対応) ため、
+  # secret はラッパースクリプトが describe-user-pool-client で別途取得する。
+  Issuer:
+    Description: id_token の iss 検証に使う issuer URL
+    Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+  AuthBase:
+    Description: Hosted UI ドメイン (authorize / token のベース URL)
+    Value: !Sub "https://${DomainPrefix}.auth.${AWS::Region}.amazoncognito.com"
