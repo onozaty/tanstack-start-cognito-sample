@@ -15,6 +15,7 @@ function requireEnv(key: string): string {
 
 type IdTokenClaims = {
   sub: string;
+  iss?: string;
   email?: string;
   email_verified?: boolean;
   name?: string;
@@ -45,9 +46,10 @@ export const auth = betterAuth({
           clientId: requireEnv("OIDC_CLIENT_ID"),
           clientSecret: requireEnv("OIDC_CLIENT_SECRET"),
           // cognito-local の discovery は issuer / jwks_uri しか返さず、authorization /
-          // token エンドポイントを含まない。そのため両 URL を明示する。
-          // discoveryUrl は issuer 検証と jwks 取得のために併せて渡す。
-          discoveryUrl: `${issuer}/.well-known/openid-configuration`,
+          // token エンドポイントを含まない。Better Auth は discoveryUrl を渡すと
+          // discovery の値で authorizationUrl / tokenUrl を上書きするため、ここで
+          // discoveryUrl を渡すと両 URL が undefined になり sign-in が失敗する。
+          // よって discoveryUrl は渡さず、両エンドポイントを明示するのみとする。
           authorizationUrl: `${authBase}/oauth2/authorize`,
           tokenUrl: `${authBase}/oauth2/token`,
           scopes: ["openid", "email", "profile"],
@@ -61,6 +63,12 @@ export const auth = betterAuth({
               throw new Error("id_token was not returned from the provider");
             }
             const claims = decodeIdToken(idToken);
+            // 自前デコードのため最低限 iss だけは検証し、別 IdP のトークンを弾く。
+            if (claims.iss !== issuer) {
+              throw new Error(
+                `id_token issuer mismatch: expected ${issuer}, got ${claims.iss}`,
+              );
+            }
             const email = claims.email;
             // cognito-local は基本的に email を返すため通常はローカル部が使われる。
             // email 欠落時の保険として cognito:username → sub の順でフォールバックする。
@@ -71,7 +79,6 @@ export const auth = betterAuth({
               email: email ?? "",
               emailVerified: claims.email_verified ?? false,
               name,
-              image: null,
               createdAt: new Date(),
               updatedAt: new Date(),
             };
