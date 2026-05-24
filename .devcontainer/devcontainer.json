@@ -4,10 +4,10 @@
   "service": "app",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
   "remoteUser": "node",
-  "forwardPorts": [3000, 9229],
+  "forwardPorts": [3000, 5556],
   "portsAttributes": {
     "3000": { "label": "TanStack Start (app)" },
-    "9229": { "label": "Cognito Local (OIDC IdP)" }
+    "5556": { "label": "Dex (OIDC IdP)" }
   },
   "features": {
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},

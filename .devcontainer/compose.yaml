@@ -39,28 +39,16 @@ services:
     depends_on:
       - db
 
-  cognito:
-    image: jagregory/cognito-local:latest
+  dex:
+    image: ghcr.io/dexidp/dex:latest
     # app・db と同じネットワーク名前空間に入れることで、ブラウザ・サーバの双方から
-    # 同一 URL (localhost:9229) で到達できる。OIDC の issuer 検証を 1 つの URL に揃えるため。
+    # 同一 URL (localhost:5556) で到達できる。OIDC の issuer 検証を 1 つの URL に揃えるため。
     network_mode: service:db
+    user: root
     volumes:
-      # シードは read-only で配り、cognito-local が書き込む実体は名前付きボリュームに置く。
-      # こうしないと起動時の書き込み (RefreshTokens 追記など) でリポジトリ管理下の JSON が汚れる。
-      - ./cognito/.cognito:/seed:ro
-      - cognito-data:/app/.cognito
-    # 初回 (ボリュームが空) のときだけシードをコピーしてから起動する。
-    # 完了マーカー (.seeded) はコピー成功後に作るため、途中で中断しても次回やり直せる。
-    # 再シードしたい場合は `docker compose ... down -v` でボリュームごと作り直す。
-    entrypoint:
-      - sh
-      - -c
-      - |
-        if [ ! -f /app/.cognito/.seeded ]; then
-          cp -r /seed/. /app/.cognito/
-          touch /app/.cognito/.seeded
-        fi
-        exec node /app/start.js
+      - ./dex/config.yaml:/etc/dex/config.yaml:ro
+      - dex-data:/data
+    command: dex serve /etc/dex/config.yaml
     depends_on:
       - db
 
@@ -69,4 +57,4 @@ volumes:
   postgres-data:
   pgadmin-data:
   claude-config:
-  cognito-data:
+  dex-data:

@@ -14,7 +14,7 @@ Parameters:
     Description: Hosted UI ドメインのプレフィックス (グローバルで一意である必要がある)
   CallbackUrl:
     Type: String
-    Default: http://localhost:3000/api/auth/oauth2/callback/cognito
+    Default: http://localhost:3000/api/auth/oauth2/callback/oidc
     Description: Better Auth の OAuth コールバック URL
   LogoutUrl:
     Type: String

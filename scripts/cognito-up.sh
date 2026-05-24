@@ -19,7 +19,7 @@ STACK_NAME="${COGNITO_STACK_NAME:-tanstack-start-cognito-sample}"
 POOL_NAME="${COGNITO_POOL_NAME:-tanstack-start-sample}"
 # Hosted UI ドメインはグローバルで一意である必要があるため suffix を足す。
 DOMAIN_PREFIX="${COGNITO_DOMAIN_PREFIX:-tss-$(date +%s)}"
-CALLBACK_URL="${COGNITO_CALLBACK_URL:-http://localhost:3000/api/auth/oauth2/callback/cognito}"
+CALLBACK_URL="${COGNITO_CALLBACK_URL:-http://localhost:3000/api/auth/oauth2/callback/oidc}"
 LOGOUT_URL="${COGNITO_LOGOUT_URL:-http://localhost:3000/}"
 TEST_EMAIL="${COGNITO_TEST_EMAIL:-admin@example.com}"
 TEST_PASSWORD="${COGNITO_TEST_PASSWORD:-Password1!}"
@@ -87,16 +87,17 @@ aws cognito-idp admin-set-user-password \
   --permanent >/dev/null
 
 # ---- .env.aws 生成 -----------------------------------------------------------
-# Vite の mode 機能で .env (共通) に上書きマージされるため、OIDC 4 項目のみ書く。
-# 起動は pnpm dev:aws (= vite dev --mode aws)。.env は触らないので cognito-local と
+# Vite の mode 機能で .env (共通) に上書きマージされるため、OIDC 設定のみ書く。
+# 起動は pnpm dev:aws (= vite dev --mode aws)。.env は触らないのでローカルの Dex と
 # 並行して使える。BETTER_AUTH_* / DATABASE_URL は .env からそのまま継承される。
 cat > "${ENV_FILE}" <<ENV
 # scripts/cognito-up.sh が生成。本物の Amazon Cognito 向けの OIDC 設定。
 # 起動: pnpm dev:aws  (.env の共通設定にこのファイルがマージされる)
 
-# OIDC_ISSUER は id_token の iss 検証に使う。Pool ID を含む。
+# OIDC_ISSUER は discovery の取得元。Pool ID を含む。
 OIDC_ISSUER=${ISSUER}
-# OIDC_AUTH_BASE は Hosted UI ドメイン。authorize / token / logout はこの配下にある。
+# OIDC_AUTH_BASE は Hosted UI ドメイン。authorize / token は discovery 経由で解決するが、
+# ログアウト (index.tsx の /logout 組み立て) でこの値を使う。
 OIDC_AUTH_BASE=${AUTH_BASE}
 OIDC_CLIENT_ID=${CLIENT_ID}
 OIDC_CLIENT_SECRET=${CLIENT_SECRET}

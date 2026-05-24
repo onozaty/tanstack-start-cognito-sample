@@ -1,8 +1,10 @@
 # tanstack-start-cognito-sample
 
-[TanStack Start](https://tanstack.com/start) + [Better Auth](https://better-auth.com/) で Amazon Cognito (OIDC) ログインを行うサンプルアプリ。普段は [cognito-local](https://github.com/jagregory/cognito-local) (Cognito エミュレータ) で動かし、env を差し替えるだけで本物の Amazon Cognito でも動作確認できる ([実際の Amazon Cognito で試す](#実際の-amazon-cognito-で試す) を参照)。
+[TanStack Start](https://tanstack.com/start) + [Better Auth](https://better-auth.com/) で OIDC ログインを行うサンプルアプリ。本番の IdP として Amazon Cognito を想定している。
 
-ローカル開発専用のサンプルとして作っており、cognito-local 用のシークレットを含む `.env` もリポジトリにコミットしている。本番運用は想定していない。
+ローカル開発では IdP として [Dex](https://dexidp.io/) を使い (AWS 不要・オフラインで動く)、本物の Amazon Cognito でも env を差し替えるだけで動作確認できる ([本物の Amazon Cognito で試す](#本物の-amazon-cognito-で試す) を参照)。アプリのコードは標準 OIDC クレームしか使わないため、Dex と Cognito で同一コードのまま動く。
+
+ローカル開発専用のサンプルとして作っており、Dex 用のシークレットを含む `.env` もリポジトリにコミットしている。本番運用は想定していない。
 
 ## スタック
 
@@ -10,7 +12,8 @@
 |---|---|
 | フレームワーク | TanStack Start (React, Vite 8) |
 | 認証 | Better Auth + `genericOAuth` プラグイン (`tanstackStartCookies` 連携) |
-| IdP | cognito-local (Amazon Cognito エミュレータ) |
+| IdP (ローカル) | Dex (OIDC プロバイダ) |
+| IdP (本番想定) | Amazon Cognito |
 | DB | PostgreSQL 18 (DevContainer の `db` サービス、`sample` データベースを共用) |
 | ORM | Drizzle ORM (`drizzle-adapter` provider: `pg`) |
 | UI | shadcn/ui (Tailwind v4) |
@@ -25,23 +28,18 @@
    │                                  ▼
    │                              PostgreSQL (db:5432, DB: sample)
    │
-   └─http://localhost:9229──▶ cognito-local (OIDC IdP)
+   └─http://localhost:5556──▶ Dex (OIDC IdP)
 ```
 
-`app` `db` `cognito` は DevContainer で `network_mode: service:db` により同じネットワーク名前空間にあり、ブラウザ・サーバの双方から `localhost:9229` で cognito-local に到達できる。これにより OIDC の issuer URL を 1 つに揃えている。
+`app` `db` `dex` は DevContainer で `network_mode: service:db` により同じネットワーク名前空間にあり、ブラウザ・サーバの双方から `localhost:5556` で Dex に到達できる。これにより OIDC の issuer URL を 1 つに揃えている。
 
-## なぜ cognito-local + genericOAuth なのか
+## 認証の仕組み
 
-cognito-local は Amazon Cognito の主要 API をローカルで再現するが、OIDC の挙動には本物の Cognito と異なる点がいくつかあり、Better Auth 側で吸収している。
+[src/lib/auth.ts](src/lib/auth.ts) は IdP 非依存の最小構成で、`genericOAuth` に `discoveryUrl` を渡すだけ。Dex も Amazon Cognito も OIDC discovery が `authorization_endpoint` / `token_endpoint` / `userinfo_endpoint` を返すため、エンドポイントを個別に指定する必要がない。providerId は IdP 中立の `oidc` に統一し、env の差し替えだけで Dex / Cognito を切り替える。
 
-- **discovery が `issuer` と `jwks_uri` しか返さない。** `authorization_endpoint` / `token_endpoint` を含まないため、[src/lib/auth.ts](src/lib/auth.ts) で `authorizationUrl` / `tokenUrl` を明示している。なお `discoveryUrl` は渡していない。Better Auth は `discoveryUrl` があると discovery レスポンスで `authorizationUrl` / `tokenUrl` を上書きするため、両エンドポイントを返さない cognito-local では sign-in が失敗してしまうのが理由。
-- **userinfo エンドポイントが無い。** `getUserInfo` で id_token (JWT) をデコードしてユーザー情報を取り出している。自前デコードのため `iss` だけは `OIDC_ISSUER` と突き合わせて検証している。
-- **id_token に `name` クレームが無い。** email のローカル部 (`@` の前) で代替している。
-- **authorize / token は PKCE (S256) 必須。** `pkce: true` を指定している。
-- **`/logout` エンドポイントが無い。** IdP ログアウト (後述) は本物の Cognito でのみ有効。cognito-local ではローカルセッションの破棄のみ行う。
-- **User Pool ID は issuer URL に含まれる。** cognito-local の `create-user-pool` は ID を自動採番するため、本サンプルでは固定 ID (`local_cognitosample`) でシードした User Pool を [.devcontainer/cognito/](.devcontainer/cognito/) にコミットしている。
+- **`name` の補完。** Amazon Cognito は id_token / userinfo に `name` を含めないことがあるため、`mapProfileToUser` で `name` が空なら email のローカル部 (`@` の前) で補完している。Dex はサンプルユーザーに `name` を持たせているのでそのまま使われる。
 
-## 起動方法
+## 起動方法 (ローカル / Dex)
 
 DevContainer (VS Code Dev Containers) を前提とする。
 
@@ -52,26 +50,26 @@ pnpm install
 # Better Auth のスキーマを DB に反映 (初回のみ)
 pnpm db:push
 
-# 開発サーバ起動
+# 開発サーバ起動 (Dex を使う)
 pnpm dev
 ```
 
-`http://localhost:3000/` を開く。「Cognito でログイン」ボタンを押すと cognito-local のログイン画面に遷移する。
+`http://localhost:3000/` を開く。ログインボタンを押すと Dex のログイン画面に遷移する。
 
-### ログイン用クレデンシャル
+### ログイン用クレデンシャル (Dex)
 
 | 項目 | 値 |
 |---|---|
 | Email | `admin@example.com` |
-| Password | `Password1!` |
+| Password | `password` |
 
-ユーザーは [.devcontainer/cognito/.cognito/db/local_cognitosample.json](.devcontainer/cognito/.cognito/db/local_cognitosample.json) にシードしている。パスワードは Cognito のパスワードポリシー (大文字・小文字・数字・記号・8 文字以上) を満たす値にしている。
+ユーザーは [.devcontainer/dex/config.yaml](.devcontainer/dex/config.yaml) の `staticPasswords` にシードしている。
 
 ## スクリプト
 
 | コマンド | 内容 |
 |---|---|
-| `pnpm dev` | 開発サーバ (port 3000, `--host` で DevContainer 外からも見える)。cognito-local を使う |
+| `pnpm dev` | 開発サーバ (port 3000, `--host` で DevContainer 外からも見える)。ローカルの Dex を使う |
 | `pnpm dev:aws` | 本物の Amazon Cognito を使う開発サーバ (`--mode aws`、`.env.aws` を読む。後述) |
 | `pnpm build` | 本番ビルド |
 | `pnpm check` | Biome (lint + format) + TypeScript の型チェックをまとめて実行 |
@@ -84,31 +82,30 @@ pnpm dev
 
 ## 主要ファイル
 
-- [src/lib/auth.ts](src/lib/auth.ts) — Better Auth のサーバ側インスタンス。`genericOAuth` に `authorizationUrl` / `tokenUrl` を渡し、`pkce` と `getUserInfo` (id_token デコード + `iss` 検証) を設定。最後に `tanstackStartCookies()` を置く
+- [src/lib/auth.ts](src/lib/auth.ts) — Better Auth のサーバ側インスタンス。`genericOAuth` に `discoveryUrl` を渡し、`mapProfileToUser` で `name` を補完。最後に `tanstackStartCookies()` を置く
 - [src/lib/auth-client.ts](src/lib/auth-client.ts) — クライアント側 `authClient`
 - [src/routes/api/auth/$.ts](src/routes/api/auth/$.ts) — Better Auth のスプラットルート (`/api/auth/*`)
-- [src/routes/index.tsx](src/routes/index.tsx) — ログイン UI。`createServerFn` でセッションを取得して描画分岐。ログアウト時は IdP ログアウト URL があれば Cognito の `/logout` へ遷移
+- [src/routes/index.tsx](src/routes/index.tsx) — ログイン UI。`createServerFn` でセッションを取得して描画分岐。ログアウト時は IdP ログアウト URL があれば IdP の `/logout` へ遷移 (Cognito 利用時のみ)
 - [src/db/index.ts](src/db/index.ts) — `pg.Pool` + Drizzle。HMR で接続が増えないよう `globalThis` キャッシュ
 - [src/db/schema.ts](src/db/schema.ts) — Better Auth CLI が生成した Drizzle スキーマ
-- [.devcontainer/compose.yaml](.devcontainer/compose.yaml) — `app`, `db`, `pgadmin4`, `cognito` の構成
-- [.devcontainer/cognito/](.devcontainer/cognito/) — cognito-local のシード (config / User Pool / Client / User)
+- [.devcontainer/compose.yaml](.devcontainer/compose.yaml) — `app`, `db`, `pgadmin4`, `dex` の構成
+- [.devcontainer/dex/config.yaml](.devcontainer/dex/config.yaml) — Dex の設定 (issuer / staticClient / staticPassword)
 - [infra/cognito.yaml](infra/cognito.yaml) — 本物の Cognito を作る CloudFormation テンプレート (User Pool / Hosted UI ドメイン / App Client)
 - [scripts/cognito-up.sh](scripts/cognito-up.sh) / [scripts/cognito-down.sh](scripts/cognito-down.sh) — 上記スタックの作成・削除と `.env.aws` 生成 (後述)
-- [.env](.env) — cognito-local 用のシークレット (ローカル前提でコミット済み)
+- [.env](.env) — Dex 用のシークレット (ローカル前提でコミット済み)
 - `.env.aws` — 本物 Cognito 用の OIDC 設定。`cognito-up.sh` が生成。client secret を含むため gitignore 済み
 
 ## ハマりどころ
 
 - **`tanstackStartCookies()` は plugins 配列の最後に置く。** 順序を間違えると Cookie が正しくセットされない
 - **issuer URL は `app` と `Browser` の双方から同じ URL で到達できないと OIDC の `iss` 検証で失敗する。** 本構成では `network_mode: service:db` でこれを担保
-- **`OIDC_ISSUER` には User Pool ID が含まれる。** シード済み Pool の固定 ID (`local_cognitosample`) と一致させる必要がある
-- **シードを変更した場合は cognito-local のボリュームを作り直す。** 初回起動時のみシードがコピーされる仕組みのため、`docker compose -f .devcontainer/compose.yaml down -v` でボリュームごと作り直す
 - **`pnpm db:push` の前に DevContainer 内で PostgreSQL の `sample` DB が立っていること。** 既存 compose で自動起動される
 - **`.env` の値はリポジトリにコミットしている。** ローカル開発専用の固定値であり、本番では絶対に流用しない
+- **provider のコールバック URL は providerId に対応する。** 本サンプルは providerId が `oidc` なので `/api/auth/oauth2/callback/oidc`。Dex の `redirectURIs` と Cognito App Client の `CallbackURLs` をこれに合わせている
 
-## 実際の Amazon Cognito で試す
+## 本物の Amazon Cognito で試す
 
-本サンプルは `.env` を書き換えずに、本物の Amazon Cognito でも動作確認できる。CloudFormation で検証用の User Pool を作成し、Vite の mode 機能で `.env.aws` を読み込む。
+`.env` を書き換えずに、本物の Amazon Cognito でも動作確認できる。CloudFormation で検証用の User Pool を作成し、Vite の mode 機能で `.env.aws` を読み込む。
 
 ```bash
 # 1. AWS 認証 (aws sts get-caller-identity が通る状態にする)
@@ -128,19 +125,17 @@ pnpm dev:aws
 ./scripts/cognito-down.sh
 ```
 
-`cognito-up.sh` は [infra/cognito.yaml](infra/cognito.yaml) を `cloudformation deploy` し、生成した値で [.env.aws](.env.aws) を書き出す。`pnpm dev:aws` (`vite dev --mode aws`) は `.env` (共通設定) に `.env.aws` (OIDC 設定) を上書きマージして読み込むため、cognito-local 用の `.env` と並行して使える。
+`cognito-up.sh` は [infra/cognito.yaml](infra/cognito.yaml) を `cloudformation deploy` し、生成した値で `.env.aws` を書き出す。`pnpm dev:aws` (`vite dev --mode aws`) は `.env` (共通設定) に `.env.aws` (OIDC 設定) を上書きマージして読み込むため、ローカルの Dex 用の `.env` と並行して使える。
 
-### コードは cognito-local とそのまま共有できる
+> Cognito のテストユーザーのパスワードは `Password1!` (Cognito のパスワードポリシーを満たす値)。Dex のサンプルユーザーの `password` とは別。
 
-本物の Cognito は discovery に authorization / token エンドポイントを含み、userinfo エンドポイントも持つが、本サンプルの [src/lib/auth.ts](src/lib/auth.ts) は discovery に依存せず `authorizationUrl` / `tokenUrl` を明示し、`getUserInfo` を自前実装している。本物の Cognito でもエンドポイントのパスは同じ (`/oauth2/authorize`, `/oauth2/token`) で、id_token も標準 JWT のため、**コード変更なしで env の差し替えだけで両対応できる**。
+### ログアウト (IdP セッションの破棄)
 
-### ログアウト
-
-Better Auth の `signOut` はアプリのセッション cookie を消すだけで、Cognito 側の Hosted UI セッションは残る。本サンプルは `OIDC_LOGOUT_URI` が設定されているとき (= `.env.aws` 使用時) に Cognito の `/logout` へリダイレクトし、IdP セッションも破棄する。cognito-local には `/logout` が無いため、`.env` には設定せずローカルログアウトのみとしている。
+Better Auth の `signOut` はアプリのセッション cookie を消すだけで、IdP 側のセッションは残る。本サンプルは `OIDC_LOGOUT_URI` 等が設定されているとき (= `.env.aws` 使用時) に Cognito の `/logout` へリダイレクトし、Hosted UI セッションも破棄する。ローカルの Dex では設定せず、ローカルセッションの破棄のみとしている。
 
 ## 参考リンク
 
 - [Better Auth: TanStack Start Integration](https://better-auth.com/docs/integrations/tanstack)
 - [Better Auth: Generic OAuth Plugin](https://better-auth.com/docs/plugins/generic-oauth)
-- [cognito-local](https://github.com/jagregory/cognito-local)
+- [Dex](https://dexidp.io/)
 - [Amazon Cognito: Using OIDC identity providers with a user pool](https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-oidc-idp.html)

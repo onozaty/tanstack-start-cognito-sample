@@ -1,0 +1,31 @@
+issuer: http://localhost:5556/dex
+
+storage:
+  type: sqlite3
+  config:
+    file: /data/dex.db
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  skipApprovalScreen: true
+  passwordConnector: local
+
+staticClients:
+  - id: tanstack-start-app
+    name: TanStack Start App
+    secret: tanstack-start-app-secret
+    redirectURIs:
+      # Better Auth の genericOAuth コールバック。providerId "oidc" に対応。
+      - http://localhost:3000/api/auth/oauth2/callback/oidc
+
+enablePasswordDB: true
+
+# パスワードは "password" の bcrypt ハッシュ (Dex のサンプル設定と同じ)
+staticPasswords:
+  - email: admin@example.com
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: admin
+    name: Admin User
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"
